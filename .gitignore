@@ -49,3 +49,10 @@ out/
 _site/
 *.css
 !petclinic.css
+
+# Terraform files
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+swarm-key.pem
