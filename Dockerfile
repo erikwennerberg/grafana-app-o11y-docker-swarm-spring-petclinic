@@ -1,9 +1,12 @@
 # Build stage
-FROM maven:3.9.6-eclipse-temurin-17 AS build
+FROM eclipse-temurin:17-jdk-jammy
 WORKDIR /app
-COPY pom.xml .
+COPY .mvn/ .mvn
+COPY mvnw pom.xml ./
+RUN ./mvnw dependency:go-offline
 COPY src ./src
-RUN mvn clean package -DskipTests
+RUN ./mvnw package -DskipTests
+CMD ["java", "-jar", "target/spring-petclinic-3.1.0-SNAPSHOT.jar"]
 
 # Run stage
 FROM eclipse-temurin:17-jre-jammy

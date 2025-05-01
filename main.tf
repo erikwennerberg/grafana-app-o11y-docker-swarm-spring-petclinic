@@ -28,11 +28,13 @@ resource "tls_private_key" "swarm_key" {
 resource "aws_key_pair" "swarm_key_pair" {
   key_name   = "swarm-key-${formatdate("YYYYMMDDhhmmss", timestamp())}"
   public_key = tls_private_key.swarm_key.public_key_openssh
+}
 
-  # Save private key using provisioner
-  provisioner "local-exec" {
-    command = "echo '${tls_private_key.swarm_key.private_key_pem}' > ./swarm-key.pem && chmod 400 ./swarm-key.pem"
-  }
+# Save private key to file
+resource "local_file" "private_key" {
+  content         = tls_private_key.swarm_key.private_key_pem
+  filename        = "swarm-key.pem"
+  file_permission = "0400"
 }
 
 # Security group for the EC2 instance
@@ -122,62 +124,9 @@ resource "aws_instance" "swarm_manager" {
               PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
               docker swarm init --advertise-addr $PRIVATE_IP
               
-              # Create the application stack
-              cat > docker-compose.yml << 'EOL'
-              version: '3.8'
-              services:
-                postgres:
-                  image: postgres:17.0
-                  environment:
-                    - POSTGRES_PASSWORD=petclinic
-                    - POSTGRES_USER=petclinic
-                    - POSTGRES_DB=petclinic
-                  networks:
-                    - petclinic-network
-                  deploy:
-                    replicas: 1
-                    placement:
-                      constraints: [node.role == manager]
-
-                petclinic:
-                  image: localhost:5000/petclinic:latest
-                  ports:
-                    - "8080:8080"
-                  environment:
-                    - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/petclinic
-                    - SPRING_DATASOURCE_USERNAME=petclinic
-                    - SPRING_DATASOURCE_PASSWORD=petclinic
-                    - SPRING_DATASOURCE_DRIVER-CLASS-NAME=org.postgresql.Driver
-                    - SPRING_PROFILES_ACTIVE=postgres
-                  networks:
-                    - petclinic-network
-                  depends_on:
-                    - postgres
-                  deploy:
-                    replicas: 2
-                    placement:
-                      constraints: [node.role == worker]
-
-              networks:
-                petclinic-network:
-                  driver: overlay
-              EOL
-              
               # Clone and build the application
-              git clone https://github.com/spring-projects/spring-petclinic.git /tmp/petclinic
+              git clone https://github.com/erikwennerberg/grafana-app-o11y-docker-swarm-spring-petclinic.git /tmp/petclinic
               cd /tmp/petclinic
-
-              # Create Dockerfile if it doesn't exist
-              cat > Dockerfile << 'EOL'
-              FROM eclipse-temurin:17-jdk-jammy
-              WORKDIR /app
-              COPY .mvn/ .mvn
-              COPY mvnw pom.xml ./
-              RUN ./mvnw dependency:go-offline
-              COPY src ./src
-              RUN ./mvnw package -DskipTests
-              CMD ["java", "-jar", "target/*.jar"]
-              EOL
 
               # Build and push the image
               docker build -t localhost:5000/petclinic:latest .
