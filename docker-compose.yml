@@ -21,7 +21,7 @@ services:
         constraints: [node.role == manager]
 
   petclinic:
-    image: localhost:5000/petclinic:latest
+    image: ewennerberg/grafana-app-o11y-docker-swarm-spring-petclinic-petclinic:1.2
     ports:
       - "8080:8080"
     environment:
@@ -30,6 +30,7 @@ services:
       - SPRING_DATASOURCE_PASSWORD=petclinic
       - SPRING_DATASOURCE_DRIVER-CLASS-NAME=org.postgresql.Driver
       - SPRING_PROFILES_ACTIVE=postgres
+      - ALLOY_LOKI_URL=http://alloy:3100/loki/api/v1/push
     networks:
       - petclinic-network
     depends_on:
@@ -39,6 +40,29 @@ services:
       placement:
         constraints: [node.role == manager]
 
+  alloy:
+    image: grafana/alloy:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/alloy/config.alloy:/etc/alloy/config.alloy
+    environment:
+      - GRAFANACLOUD_METRICS_URL
+      - GRAFANACLOUD_METRICS_USERNAME
+      - GRAFANACLOUD_METRICS_PASSWORD
+      - GRAFANACLOUD_LOGS_URL
+      - GRAFANACLOUD_LOGS_USERNAME
+      - GRAFANACLOUD_LOGS_PASSWORD
+      - GRAFANACLOUD_FLEET_MANAGEMENT_URL
+      - GRAFANACLOUD_FLEET_MANAGEMENT_USERNAME
+      - GRAFANACLOUD_FLEET_MANAGEMENT_PASSWORD
+    networks:
+      - petclinic-network
+    deploy:
+      mode: global
+
 networks:
   petclinic-network:
     driver: overlay
+    attachable: true

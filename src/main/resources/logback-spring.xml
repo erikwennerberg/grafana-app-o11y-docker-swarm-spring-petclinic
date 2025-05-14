@@ -24,11 +24,38 @@
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
+
+    <!-- Loki Appender -->
+        <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
+        <http>
+            <url>${ALLOY_LOKI_URL:-http://alloy:3100/loki/api/v1/push}</url>
+        </http>
+        <format>
+            <label>
+                <!-- Labels -->
+                <pattern>
+                    app = petclinic,
+                    host = ${HOSTNAME}
+                </pattern>
+                <!-- Structured metadata (since Loki v2.9.0) -->
+                <structuredMetadataPattern>
+                    level = %level,
+                    thread = %thread,
+                    class = %logger,
+                    traceId = %mdc{traceId:-none}
+                </structuredMetadataPattern>
+            </label>
+            <message>
+                <pattern>%-5level %logger{20} %msg %ex</pattern>
+            </message>
+        </format>
+    </appender>
     
     <!-- Root Logger -->
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
+        <appender-ref ref="LOKI"/>
     </root>
     
     <!-- Spring Framework Logging -->

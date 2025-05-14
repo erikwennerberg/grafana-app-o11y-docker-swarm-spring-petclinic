@@ -16,7 +16,8 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-2"  # Change this to your preferred region
+  region  = "us-east-2"  # Change this to your preferred region
+  profile = "AdministratorAccess-494614287886"
 }
 
 # Create SSH key pair
@@ -50,9 +51,30 @@ resource "aws_security_group" "swarm_sg" {
   }
 
   ingress {
-    from_port   = 80
-    to_port     = 80
+    from_port   = 2377
+    to_port     = 2377
     protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 4789
+    to_port     = 4789
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 7946
+    to_port     = 7946
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 7946
+    to_port     = 7946
+    protocol    = "udp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -64,30 +86,17 @@ resource "aws_security_group" "swarm_sg" {
   }
 
   ingress {
-    from_port   = 2377
-    to_port     = 2377
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Add Alloy port
   ingress {
-    from_port   = 7946
-    to_port     = 7946
+    from_port   = 12345
+    to_port     = 12345
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 7946
-    to_port     = 7946
-    protocol    = "udp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 4789
-    to_port     = 4789
-    protocol    = "udp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -99,6 +108,7 @@ resource "aws_security_group" "swarm_sg" {
   }
 }
 
+
 # EC2 instance for Docker Swarm
 resource "aws_instance" "swarm_manager" {
   ami           = "ami-0376da4f943e28a68"  # Ubuntu 22.04 LTS
@@ -107,34 +117,121 @@ resource "aws_instance" "swarm_manager" {
 
   security_groups = [aws_security_group.swarm_sg.name]
 
-  user_data = <<-EOF
-              #!/bin/bash
-              apt-get update
-              apt-get install -y apt-transport-https ca-certificates curl software-properties-common
-              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
-              add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-              apt-get update
-              apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-              
-              # Start Docker registry
-              docker run -d -p 5000:5000 --restart=always --name registry registry:2
-              
-              # Initialize Docker Swarm
-              PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-              PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-              docker swarm init --advertise-addr $PRIVATE_IP
-              
-              # Clone and build the application
-              git clone https://github.com/erikwennerberg/grafana-app-o11y-docker-swarm-spring-petclinic.git /tmp/petclinic
-              cd /tmp/petclinic
+  # Copy docker-compose.yml to the server
+  provisioner "file" {
+    source      = "docker-compose.yml"
+    destination = "/tmp/docker-compose.yml"
 
-              # Build and push the image
-              docker build -t localhost:5000/petclinic:latest .
-              docker push localhost:5000/petclinic:latest
-              
-              # Deploy the stack
-              docker stack deploy -c docker-compose.yml petclinic
-              EOF
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = tls_private_key.swarm_key.private_key_pem
+      host        = self.public_ip
+    }
+  }
+
+  # Copy Alloy configuration to the server
+  provisioner "file" {
+    source      = "config.alloy"
+    destination = "/tmp/config.alloy"
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = tls_private_key.swarm_key.private_key_pem
+      host        = self.public_ip
+    }
+  }
+
+  user_data = <<-EOF
+#!/bin/bash
+set -e
+
+# Update system
+apt-get update
+apt-get upgrade -y
+
+# Install Docker
+apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io
+
+# Add ubuntu user to docker group
+usermod -aG docker ubuntu
+
+# Configure Docker daemon for metrics and experimental features
+cat > /etc/docker/daemon.json << 'EOL'
+{
+  "metrics-addr" : "0.0.0.0:9323",
+  "experimental" : true
+}
+EOL
+
+# Restart Docker to apply the new configuration
+systemctl restart docker
+
+# Install Docker Compose
+curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+
+# Copy docker-compose.yml and Alloy config to the final location
+cp /tmp/docker-compose.yml /home/ubuntu/docker-compose.yml
+
+# Create Alloy configuration directory and copy config
+sudo mkdir -p /etc/alloy
+cp /tmp/config.alloy /etc/alloy/config.alloy
+
+# Set proper permissions for Alloy config
+sudo chown -R root:root /etc/alloy
+
+# Set Grafana Cloud environment variables
+cat > /etc/environment << EOL
+GRAFANACLOUD_METRICS_URL="${var.grafanacloud_metrics_url}"
+GRAFANACLOUD_METRICS_USERNAME="${var.grafanacloud_metrics_username}"
+GRAFANACLOUD_METRICS_PASSWORD="${var.grafanacloud_metrics_password}"
+GRAFANACLOUD_LOGS_URL="${var.grafanacloud_logs_url}"
+GRAFANACLOUD_LOGS_USERNAME="${var.grafanacloud_logs_username}"
+GRAFANACLOUD_LOGS_PASSWORD="${var.grafanacloud_logs_password}"
+GRAFANACLOUD_FLEET_MANAGEMENT_URL="${var.grafanacloud_fleet_management_url}"
+GRAFANACLOUD_FLEET_MANAGEMENT_USERNAME="${var.grafanacloud_fleet_management_username}"
+GRAFANACLOUD_FLEET_MANAGEMENT_PASSWORD="${var.grafanacloud_fleet_management_password}"
+EOL
+
+# Source the environment variables
+set -a
+source /etc/environment
+set +a
+
+# Create a systemd service override to ensure Docker daemon has access to environment variables
+mkdir -p /etc/systemd/system/docker.service.d/
+cat > /etc/systemd/system/docker.service.d/override.conf << EOL
+[Service]
+EnvironmentFile=/etc/environment
+EOL
+
+# Reload systemd and restart Docker to apply the environment variables
+systemctl daemon-reload
+systemctl restart docker
+
+# Initialize Docker Swarm
+docker swarm init
+
+# Deploy the stack
+cd /home/ubuntu
+docker stack deploy -c docker-compose.yml petclinic
+EOF
 
   tags = {
     Name = "Docker Swarm Manager"

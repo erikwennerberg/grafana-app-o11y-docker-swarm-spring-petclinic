@@ -1,0 +1,98 @@
+// Define logging configuration
+logging {
+  level  = "info"
+}
+
+//for fleet management
+remotecfg {
+    url = sys.env("GRAFANACLOUD_FLEET_MANAGEMENT_URL")
+    basic_auth {
+        username      = sys.env("GRAFANACLOUD_FLEET_MANAGEMENT_USERNAME")
+        password      = sys.env("GRAFANACLOUD_FLEET_MANAGEMENT_PASSWORD")
+    }
+
+    id             = constants.hostname
+    attributes     = {"namespace" = "swarm-test"}
+    poll_frequency = "5m"
+}
+
+//monitor docker swarm
+discovery.dockerswarm "dockerswarmservices" {
+  host = "unix:///var/run/docker.sock"
+  role = "services"
+}
+
+//monitor docker swarm
+discovery.dockerswarm "dockerswarmtasks" {
+  host = "unix:///var/run/docker.sock"
+  role = "tasks"
+}
+
+//monitor docker swarm
+discovery.dockerswarm "dockerswarmnodes" {
+  host = "unix:///var/run/docker.sock"
+  role = "nodes"
+}
+
+prometheus.scrape "dockerswarm" {
+  scrape_timeout = "30s"
+  targets    = array.concat(discovery.dockerswarm.dockerswarmservices.targets, discovery.dockerswarm.dockerswarmtasks.targets, discovery.dockerswarm.dockerswarmnodes.targets)
+  forward_to = [prometheus.remote_write.grafanacloud.receiver]
+}
+
+//get swarm services logs
+local.file_match "swarm_services" {
+	path_targets = discovery.dockerswarm.dockerswarmservices.targets
+}
+//get swarm tasks logs
+local.file_match "swarm_tasks" {
+	path_targets = discovery.dockerswarm.dockerswarmservices.targets
+}
+//get swarm node logs
+local.file_match "swarm_nodes" {
+	path_targets = discovery.dockerswarm.dockerswarmservices.targets
+}
+loki.source.file "swarm_logs" {
+	targets               = array.concat(local.file_match.swarm_services.targets, local.file_match.swarm_tasks.targets, local.file_match.swarm_nodes.targets)
+	forward_to            = [loki.write.grafanacloud.receiver]
+}
+
+//monitor underlying host metrics
+prometheus.exporter.unix "host" { }
+// Configure a prometheus.scrape component to collect unix metrics.
+prometheus.scrape "host" {
+  targets    = prometheus.exporter.unix.host.targets
+  forward_to = [prometheus.remote_write.grafanacloud.receiver]
+}
+
+//setup loki source api to receive app logs from logback
+loki.source.api "loki_push_api" {
+    http {
+        listen_address = "0.0.0.0"
+        listen_port = "3100"
+    }
+    forward_to = [loki.write.grafanacloud.receiver]
+}
+
+//send logs to grafana cloud
+loki.write "grafanacloud" {
+    endpoint {
+        url = sys.env("GRAFANACLOUD_LOGS_URL")
+        basic_auth {
+            username = sys.env("GRAFANACLOUD_LOGS_USERNAME")
+            password = sys.env("GRAFANACLOUD_LOGS_PASSWORD")
+        }
+    }
+}
+
+//send metrics to grafana cloud
+prometheus.remote_write "grafanacloud" {
+  endpoint {
+    url = sys.env("GRAFANACLOUD_METRICS_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANACLOUD_METRICS_USERNAME")
+      password = sys.env("GRAFANACLOUD_METRICS_PASSWORD")
+    }
+  }
+}
