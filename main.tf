@@ -17,7 +17,6 @@ terraform {
 
 provider "aws" {
   region  = "us-east-2"  # Change this to your preferred region
-  profile = "AdministratorAccess-494614287886"
 }
 
 # Create SSH key pair
