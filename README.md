@@ -20,7 +20,7 @@ The following items should be installed in your system:
 
 Run docker compose up
 
-### Run Petclinic on AWS
+## Run Petclinic on AWS
 
 1. Set the following terraform variables before or during the terraforming:
    TF_VAR_grafanacloud_metrics_url
