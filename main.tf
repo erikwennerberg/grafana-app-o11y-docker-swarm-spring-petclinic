@@ -206,6 +206,9 @@ GRAFANACLOUD_LOGS_PASSWORD="${var.grafanacloud_logs_password}"
 GRAFANACLOUD_FLEET_MANAGEMENT_URL="${var.grafanacloud_fleet_management_url}"
 GRAFANACLOUD_FLEET_MANAGEMENT_USERNAME="${var.grafanacloud_fleet_management_username}"
 GRAFANACLOUD_FLEET_MANAGEMENT_PASSWORD="${var.grafanacloud_fleet_management_password}"
+OTEL_EXPORTER_OTLP_PROTOCOL="${var.otel_exporter_otlp_protocol}"
+OTEL_EXPORTER_OTLP_ENDPOINT="${var.otel_exporter_otlp_endpoint}"
+OTEL_EXPORTER_OTLP_HEADERS="${var.otel_exporter_otlp_headers}"
 EOL
 
 # Source the environment variables

@@ -14,14 +14,10 @@ RUN ./mvnw package -DskipTests
 
 # Run stage
 FROM eclipse-temurin:17-jre-jammy
-# OTLP configuration
-ARG OTLP_PROTOCOL="http/protobuf"
-ARG OTLP_ENDPOINT="https://otlp-gateway-prod-us-east-0.grafana.net/otlp"
-ARG OTLP_HEADERS="Authorization=Basic <your-grafana-cloud-token>"
 
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
-COPY --from=build /app/javaagent.jar javaagent.jar
+COPY --from=build /app/javaagent.jar /app/javaagent.jar
 ENV JAVA_TOOL_OPTIONS="-javaagent:/app/javaagent.jar"
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"] 
