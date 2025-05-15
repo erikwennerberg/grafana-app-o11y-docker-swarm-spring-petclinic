@@ -34,8 +34,9 @@
             <label>
                 <!-- Labels -->
                 <pattern>
-                    app = petclinic,
-                    host = ${HOSTNAME}
+                    service_name = "petclinic",
+                    service_namespace = "petclinic_app",
+                    deployment_environment = "test",
                 </pattern>
                 <!-- Structured metadata (since Loki v2.9.0) -->
                 <structuredMetadataPattern>
