@@ -15,6 +15,16 @@ The following items should be installed in your system:
 - AWS CLI
 - A JDK if you want to re-build/change the petclinic app
 
+## Building the Petclinic Docker Image
+
+The Petclinic image comes bundled with the Grafana OTEL java agent. To get the agent to send telemetry to your Grafana cloud instance, the image needs to be rebuilt with the right arguments as per the below. Those prameters will be generated on your org profile (https://grafana.com/orgs/<yourorg>/stacks/<orgid>/otlp-info) when you generate a new token for an OTLP endpoint.
+docker build \
+  --build-arg OTLP_PROTOCOL="<OTLP protocol>" \
+  --build-arg OTLP_ENDPOINT="<Your Grafana Cloud OTLP Endpoint>" \
+  --build-arg OTLP_HEADERS="<Your Grafana Cloud OTLP Auth header>" \
+  -t spring-petclinic:latest .
+
+  To use the docker image you built, don't forget to publish it to a repository and reference it in the docker compose file for the petclinic service.
 
 ## Run Petclinic locally
 
